@@ -124,7 +124,7 @@ def run(
         dt[1] += t3 - t2
 
         # NMS
-        pred = non_max_suppression(pred, 0.25, iou_thres, classes, agnostic_nms, max_det=max_det)
+        pred = non_max_suppression(pred, conf_thres, iou_thres, classes, agnostic_nms, max_det=max_det)
         dt[2] += time_sync() - t3
 
         # Second-stage classifier (optional)

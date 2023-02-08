@@ -306,7 +306,8 @@ class ComputeLoss:
                 pbox = torch.cat((pxy, pwh), 1)  # predicted box
                 iou = bbox_iou(pbox, tbox[i], CIoU=True).squeeze()  # iou(prediction, target)
                 lbox += (1.0 - iou).mean()  # iou loss
-                ambox = bbox_amniotic(pbox, tbox[i]).squeeze()# (1.0 - iou).mean()  # iou loss
+                #lbox += bbox_amniotic(pbox, tbox[i]).squeeze().mean() + (1.0 - iou).mean()  # iou loss
+
                 # Objectness
                 iou = iou.detach().clamp(0).type(tobj.dtype)
                 if self.sort_obj_iou:
@@ -340,7 +341,6 @@ class ComputeLoss:
                     invlogits = invlogits*q + praw_cls*(1-q)
                     loss = tfunc.binary_cross_entropy_with_logits(invlogits, t,pos_weight=pos_weights,reduction="mean")
                     lcls+= loss
-                    lbox+= (ambox*t[:,self.amniotic_fluid_idx]).sum()/(1+t[:,self.amniotic_fluid_idx].sum())
 
                 # Append targets to text file
                 # with open('targets.txt', 'a') as file:
