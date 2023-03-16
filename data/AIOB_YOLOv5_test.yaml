@@ -15,8 +15,9 @@ val:  'test/test_data' # val images (relative to 'path') 128 images
 test:  'test/test_data' # test images (optional)
 
 # Classes
-nc: 7 # number of classes
-names: ['AmnioticFluid', 'Placenta', 'Head', 'Spine', 'Heart', 'Stomach', 'UrinaryBladder']
+nc: 3 # number of classes
+names: ['Spine-Others', 'Spine-Axial', 'Spine-Sagittal']
+# names: ['AmnioticFluid', 'Placenta', 'Head', 'Spine', 'Heart', 'Stomach', 'UrinaryBladder']
 # names: ['AmnioticFluid', 'Placenta', 'Head']
 # names: ['AmnioticFluid', 'Head-Others', 'Placenta', 'Spine-Others', 'HeartOthers', 'Stomach', 'UrinaryBladder', 
 #         'DiscardSweep', 'Head(axial)', 'Headpartialaxial', 'HeartAxialComplete', 'Spine-Axial', 'UmbilicalVeinAxial', 

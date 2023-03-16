@@ -10,13 +10,14 @@
 # Train/val/test sets as 1) dir: path/to/imgs, 2) file: path/to/imgs.txt, or 3) list: [path/to/imgs1, path/to/imgs2, ..]
 # path: /local/home/tongxi/FAMILI_YOLO_BGL  # dataset root dirmap
 path: '/local/home/tongxi/FAMILI_YOLO_BGL/dataset'
-train:  'train/train_data' # train images (relative to 'path') 128 images
-val:  'val/val_data' # val images (relative to 'path') 128 images
-test:  'test/test_data' # test images (optional)
+train:  'train.txt' # train images (relative to 'path') 128 images
+val:  'test.txt' # val images (relative to 'path') 128 images
+test:  'test.txt' # test images (optional)
 
 # Classes
 nc: 7 # number of classes
 names: ['AmnioticFluid', 'Placenta', 'Head', 'Spine', 'Heart', 'Stomach', 'UrinaryBladder']
+# names: ['AmnioticFluid', 'Placenta', 'Head', 'Spine', 'Heart', 'Stomach', 'UrinaryBladder']
 # names: ['AmnioticFluid', 'Placenta', 'Head']
 # names: ['AmnioticFluid', 'Head-Others', 'Placenta', 'Spine-Others', 'HeartOthers', 'Stomach', 'UrinaryBladder', 
 #         'DiscardSweep', 'Head(axial)', 'Headpartialaxial', 'HeartAxialComplete', 'Spine-Axial', 'UmbilicalVeinAxial', 
