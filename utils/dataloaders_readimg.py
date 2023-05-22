@@ -27,8 +27,7 @@ import yaml
 from PIL import ExifTags, Image, ImageOps
 from torch.utils.data import DataLoader, Dataset, dataloader, distributed
 from tqdm import tqdm
-from pydicom import dcmread
-from pydicom.pixel_data_handlers.util import convert_color_space
+
 from utils.augmentations import (Albumentations, augment_hsv, classify_albumentations, classify_transforms, copy_paste,
                                  letterbox, mixup, random_perspective)
 from utils.general import (DATASETS_DIR, LOGGER, NUM_THREADS, TQDM_BAR_FORMAT, check_dataset, check_requirements,
@@ -39,8 +38,7 @@ from utils.torch_utils import torch_distributed_zero_first
 # Parameters
 HELP_URL = 'See https://github.com/ultralytics/yolov5/wiki/Train-Custom-Data'
 IMG_FORMATS = 'bmp', 'dng', 'jpeg', 'jpg', 'mpo', 'png', 'tif', 'tiff', 'webp', 'pfm'  # include image suffixes
-VID_FORMATS = 'asf', 'avi', 'gif', 'm4v', 'mkv', 'mov', 'mp4', 'mpeg', 'mpg', 'ts', 'wmv','dcm'  # include video suffixes
-DICOM_FORMATS='dcm'
+VID_FORMATS = 'asf', 'avi', 'gif', 'm4v', 'mkv', 'mov', 'mp4', 'mpeg', 'mpg', 'ts', 'wmv'  # include video suffixes
 LOCAL_RANK = int(os.getenv('LOCAL_RANK', -1))  # https://pytorch.org/docs/stable/elastic/run.html
 RANK = int(os.getenv('RANK', -1))
 PIN_MEMORY = str(os.getenv('PIN_MEMORY', True)).lower() == 'true'  # global pin_memory for dataloaders
@@ -238,180 +236,6 @@ class LoadScreenshots:
         return str(self.screen), im, im0, None, s  # screen, img, original img, im0s, s
 
 
-
-
-class LoadDicom:
-    def __init__(self,path,img_size=640,stride=32,auto=True, transforms=None,vid_stride=1):
-        if isinstance(path, str) and Path(path).suffix == ".txt":  # *.txt file with img/vid/dir on each line
-            path = Path(path).read_text().rsplit()
-        files = []
-        for p in sorted(path) if isinstance(path, (list, tuple)) else [path]:
-            p = str(Path(p).resolve())
-            if '*' in p:
-                files.extend(sorted(glob.glob(p, recursive=True)))  # glob
-            elif os.path.isdir(p):
-                files.extend(sorted(glob.glob(os.path.join(p, '*.*'))))  # dir
-            elif os.path.isfile(p):
-                files.append(p)  # files
-            else:
-                print(p)
-                raise FileNotFoundError(f'{p} does not exist')
-        dicoms=[x for x in files] # if x.split('.')[-1].lower() in DICOM_FORMATS]
-        print(dicoms)
-        self.nf=len(dicoms)
-        self.img_size = img_size
-        self.mode = 'video'
-        self.auto = auto
-        self.video_flag = [True] * self.nf
-        self.files=dicoms
-        self.stride=stride
-        self.transforms = transforms  # optional
-        self.vid_stride=vid_stride
-        if any(dicoms):
-            self.frames=self._new_sweep(dicoms[0])  # new video
-        else:
-            self.cap = None
-        #assert self.nf > 0, f'No images or videos found in {p}. ' \
-        #                    f'Supported formats are:\nimages: {IMG_FORMATS}\nvideos: {VID_FORMATS}\ndicom: {DICOM_FORMATS}'
-    def __iter__(self):
-        self.count = 0
-        return self
-
-    def __next__(self):
-        if self.count == self.nf:
-            raise StopIteration
-        path = self.files[self.count]
-
-        if self.video_flag[self.count]:
-            # Read video
-            self.mode = 'video'
-            # for _ in range(self.vid_stride):
-            #     #self.cap.grab()
-            # ret_val, im0 = self.cap.retrieve()
-            #self._new_sweep(path)
-            self.frames=self.arr2.shape[0]
-            ret_val= self.grab()
-            if ret_val==True:
-                #self.frames=self.arr2.shape[0]
-                im0=self.image
-            while not ret_val:
-                self.count += 1
-                del self.cap
-                del self.arr
-                #del im
-                #del im0
-                if self.count== self.nf:  # last video
-                    raise StopIteration
-                path = self.files[self.count]
-                self.frames=self._new_sweep(path)
-                self.frames=self.arr2.shape[0]
-                ret_val= self.grab()
-                if ret_val==True:
-                    im0=self.image
-
-            self.frame += 1
-            # im0 = self._cv2_rotate(im0)  # for use if cv2 autorotation is False
-            s = f'video {self.count + 1}/{self.nf} ({self.frame}/{self.frames}) {path}: '
-
-        else:
-            # Read image
-            self.count += 1
-            im0 = cv2.imread(path)  # BGR
-            assert im0 is not None, f'Image Not Found {path}'
-            s = f'image {self.count}/{self.nf} {path}: '
-
-        if self.transforms:
-            im = self.transforms(im0)  # transforms
-        else:
-            # if im0.ndim==3:
-            #     im=np.sum(im0,axis=2)/3
-            # elif im0.ndim==4:
-            #     im=np.sum(im0,axis=3)/3
-            #im=im[0]
-            # im=np.broadcast_to(im,(3,im.shape[0],im.shape[1],im.shape[2]))
-            # im=np.transpose(im,(1,0,2,3))
-            #im=np.expand_dims(im,axis=0)
-            im=im0[None,:,:,:]
-            im=im[:,:,:,0]
-            im=im[:,:,:,None]
-            im=np.broadcast_to(im,(im.shape[0],im.shape[1],im.shape[2],3))
-            im=self.extract_cone(im)
-            im=np.broadcast_to(im,(im.shape[0],im.shape[1],im.shape[2],3))
-            im = letterbox(im[0], self.img_size, stride=self.stride, auto=self.auto)[0] 
-            #im = cv2.resize(im[0], (640,640), interpolation=cv2.INTER_LINEAR)
-            im=im[None,:,:,:]
-            im=np.transpose(im,(0,3,1,2))
-            # from skimage.transform import resize
-            # im=resize(im,(1,3,640,640),anti_aliasing=False)
-            # im=im*255
-            
-            #im = letterbox(im0, self.img_size, stride=self.stride, auto=self.auto)[0]  # padded resize
-            #print(im.shape)
-            #im = im.transpose((2, 0, 1))#[::-1]  # HWC to CHW, BGR to RGB
-            im = np.ascontiguousarray(im)  # contiguous
-            # if im.ndim == 3:
-            #     im = im[:, :, :]
-            #     #im = np.broadcast_to(im,(1,im.shape[0],im.shape[1],im.shape[2]))
-            #print(im.shape)
-
-        return path, im, im0, self.cap, s
-    
-    def _new_sweep(self, path):
-        # Create a new video capture object
-        self.frame = 0
-        print(path)
-        self.cap = dcmread(path)
-        self.arr = self.cap.pixel_array
-        # Converting color space to RGB from YBR
-        if self.cap[0x0028, 0x0004].value in ['YBR_FULL', 'YBR_FULL_422']:
-            self.arr = convert_color_space(self.arr, self.cap[0x0028, 0x0004].value, 'RGB') #print(ds[0x0028, 0x2110]) # Info about compression
-        if self.arr.ndim == 3:
-            self.arr = self.arr[:, :, :, None]
-            self.arr = np.broadcast_to(self.arr,(self.arr.shape[0],self.arr.shape[1],self.arr.shape[2],3))
-        else:
-            assert self.arr.ndim == 4    
-        self.arr2=self.arr     
-        self.frames=self.arr.shape[0]
-        return self.frames
-    def grab(self):
-        if self.frame<self.frames:
-            self.ret_val=True
-            self.image=self.arr2[self.frame]
-        else:
-            self.ret_val=False
-            del self.image
-        return self.ret_val
-
-    def __len__(self):
-        return self.nf  # number of files
-
-    def extract_cone(self,us):
-        """
-        us : SHAPE : [FRAMES,HEIGHT,WIDTH,CHANNELS]
-        
-        """
-        from skimage import morphology, measure
-        us = us[:,:,:,0:1] #because in FAMLI2 the 1st channel contains the proper image
-        us_max = np.max(us,axis=0)
-        us_max = np.max(us_max,axis=2)
-        us_eroded = morphology.binary_erosion(us_max,np.ones((7,7)))
-        us_eroded = morphology.remove_small_objects(us_eroded,120)
-        label_image = measure.label(us_eroded)
-        labels, label_counts = np.unique(label_image,return_counts=True)
-        labels = labels[1:]
-        label_counts = label_counts[1:]
-        arg_idxes = np.argsort(label_counts)[::-1]
-        labels = labels[arg_idxes]
-        label_counts = label_counts[arg_idxes]
-        max_area = label_counts[0]
-        new_image = np.zeros_like(label_image)
-        for label,lab_cnt in zip(labels.tolist(),label_counts.tolist()):
-            if lab_cnt > 0.2*max_area:
-                new_image = new_image + 1*(label_image == label)
-        new_image = (new_image>0.2)
-        us_eroded = morphology.convex_hull_image(new_image)[np.newaxis,:,:,np.newaxis]
-        return us_eroded*us
-
 class LoadImages:
     # YOLOv5 image/video dataloader, i.e. `python detect.py --source image.jpg/vid.mp4`
     def __init__(self, path, img_size=640, stride=32, auto=True, transforms=None, vid_stride=1):
@@ -488,13 +312,21 @@ class LoadImages:
             im = self.transforms(im0)  # transforms
         else:
             im = letterbox(im0, self.img_size, stride=self.stride, auto=self.auto)[0]  # padded resize
-            #print(im.shape)
+            im=im[:,:,0]
+            im=im[None,:,:,None]
+            im=np.broadcast_to(im,(im.shape[0],im.shape[1],im.shape[2],3))
+            im = self.extract_cone(im)
+            im=np.broadcast_to(im,(im.shape[0],im.shape[1],im.shape[2],3))
+            im=im[0]
             im = im.transpose((2, 0, 1))[::-1]  # HWC to CHW, BGR to RGB
             im = np.ascontiguousarray(im)  # contiguous
-            # if im.ndim == 3:
-            #     im = im[:, :, :]
-            #     #im = np.broadcast_to(im,(1,im.shape[0],im.shape[1],im.shape[2]))
-            #print(im.shape)
+            # im=im0[None,:,:,:]
+            # im=im[:,:,:,0]
+            # im=im[:,:,:,None]
+            # im=np.broadcast_to(im,(im.shape[0],im.shape[1],im.shape[2],3))
+            # im=self.extract_cone(im)
+            # im=np.broadcast_to(im,(im.shape[0],im.shape[1],im.shape[2],3))
+            # im=np.transpose(im,(0,3,1,2))
 
         return path, im, im0, self.cap, s
 
@@ -518,6 +350,33 @@ class LoadImages:
 
     def __len__(self):
         return self.nf  # number of files
+
+    def extract_cone(self,us):
+        """
+        us : SHAPE : [FRAMES,HEIGHT,WIDTH,CHANNELS]
+        
+        """
+        from skimage import morphology, measure
+        us = us[:,:,:,0:1] #because in FAMLI2 the 1st channel contains the proper image
+        us_max = np.max(us,axis=0)
+        us_max = np.max(us_max,axis=2)
+        us_eroded = morphology.binary_erosion(us_max,np.ones((7,7)))
+        us_eroded = morphology.remove_small_objects(us_eroded,120)
+        label_image = measure.label(us_eroded)
+        labels, label_counts = np.unique(label_image,return_counts=True)
+        labels = labels[1:]
+        label_counts = label_counts[1:]
+        arg_idxes = np.argsort(label_counts)[::-1]
+        labels = labels[arg_idxes]
+        label_counts = label_counts[arg_idxes]
+        max_area = label_counts[0]
+        new_image = np.zeros_like(label_image)
+        for label,lab_cnt in zip(labels.tolist(),label_counts.tolist()):
+            if lab_cnt > 0.2*max_area:
+                new_image = new_image + 1*(label_image == label)
+        new_image = (new_image>0.2)
+        us_eroded = morphology.convex_hull_image(new_image)[np.newaxis,:,:,np.newaxis]
+        return us_eroded*us
 
 
 class LoadStreams:
