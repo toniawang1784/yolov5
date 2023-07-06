@@ -23,6 +23,7 @@ import argparse
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 import numpy as np
@@ -153,7 +154,6 @@ def run(
 
         # Data
         data = check_dataset(data)  # check
-        print(data, len(data))
 
     # Configure
     model.eval()
@@ -405,5 +405,10 @@ def main(opt):
 
 
 if __name__ == "__main__":
+    start = time.time()
     opt = parse_opt()
     main(opt)
+    end = time.time()
+    #Subtract Start Time from The End Time
+    total_time = end - start
+    print("\n"+ str(total_time))

@@ -34,6 +34,7 @@ import time
 from pathlib import Path
 
 import numpy as np
+import tensorflow as tf
 import torch
 from torchsummary import summary
 os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
@@ -47,8 +48,8 @@ if str(ROOT) not in sys.path:
 ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
 
 from models.common import DetectMultiBackend
-from utils.dataloaders import IMG_FORMATS, VID_FORMATS, LoadImages, LoadScreenshots, LoadStreams, LoadDicom
-# from utils.dataloaders_batchIMAGE import IMG_FORMATS, VID_FORMATS, LoadImages, LoadScreenshots, LoadStreams, LoadDicom
+# from utils.dataloaders import IMG_FORMATS, VID_FORMATS, LoadImages, LoadScreenshots, LoadStreams, LoadDicom
+from utils.dataloaders_batchIMAGE import IMG_FORMATS, VID_FORMATS, LoadImages, LoadScreenshots, LoadStreams, LoadDicom
 from utils.general import (LOGGER, Profile, check_file, check_img_size, check_imshow, check_requirements, colorstr, cv2,
                            increment_path, non_max_suppression, print_args, scale_boxes, strip_optimizer, xyxy2xywh)
 from utils.plots import Annotator, colors, save_one_box
@@ -105,6 +106,25 @@ def run(
     stride, names, pt = model.stride, model.names, model.pt
     imgsz = check_img_size(imgsz, s=stride)  # check image size
 
+
+    interpreter = tf.lite.Interpreter(model_path=weights)
+
+    # Get input and output tensors.
+    input_details = interpreter.get_input_details()
+    output_details = interpreter.get_output_details()
+
+    # Allocate tensors
+    interpreter.allocate_tensors()
+
+    # Print the input and output details of the model
+    print()
+    print("Input details:")
+    print(input_details)
+    print()
+    print("Output details:")
+    print(output_details)
+    print()
+
     # Dataloader
     bs = batchsz
     if webcam:
@@ -114,8 +134,8 @@ def run(
     elif screenshot:
         dataset = LoadScreenshots(source, img_size=imgsz, stride=stride, auto=pt)
     else:
-        dataset = LoadDicom(source, img_size=imgsz, stride=stride, auto=pt, vid_stride=vid_stride)
-        # dataset = LoadImages(source, batch_size = bs, img_size=imgsz, stride=stride, auto=pt, vid_stride=vid_stride)
+        # dataset = LoadDicom(source, img_size=imgsz, stride=stride, auto=pt, vid_stride=vid_stride)
+        dataset = LoadImages(source, batch_size = bs, img_size=imgsz, stride=stride, auto=pt, vid_stride=vid_stride)
     
     vid_path, vid_writer = [None] * bs, [None] * bs
 
@@ -123,6 +143,45 @@ def run(
     model.warmup(imgsz=(1 if pt or model.triton else bs, 3, *imgsz))  # warmup
     seen, windows, dt = 0, [], (Profile(), Profile(), Profile())
     for path, im, im0s, vid_cap, s in dataset:
+        np.features = im.transpose((0, 2, 3, 1))
+
+        input_type = input_details[0]['dtype']
+        if input_type == np.int8:
+            input_scale, input_zero_point = input_details[0]['quantization']
+            print("Input scale:", input_scale)
+            print("Input zero point:", input_zero_point)
+            print()
+            np_features = (np_features / input_scale) + input_zero_point
+            np_features = np.around(np_features)
+            
+        # Convert features to NumPy array of expected type
+        np_features = np_features.astype(input_type)
+
+        # Add dimension to input sample (TFLite model expects (# samples, data))
+        np_features = np.expand_dims(np_features, axis=0)
+
+        # Create input tensor out of raw features
+        interpreter.set_tensor(input_details[0]['index'], np_features)
+
+        # Run inference
+        interpreter.invoke()
+
+        # output_details[0]['index'] = the index which provides the input
+        output = interpreter.get_tensor(output_details[0]['index'])
+
+        # If the output type is int8 (quantized model), rescale data
+        output_type = output_details[0]['dtype']
+        if output_type == np.int8:
+            output_scale, output_zero_point = output_details[0]['quantization']
+            print("Raw output scores:", output)
+            print("Output scale:", output_scale)
+            print("Output zero point:", output_zero_point)
+            print()
+            output = output_scale * (output.astype(np.float32) - output_zero_point)
+
+        # # Print the results of inference
+        print("Inference output:", output.shape)
+
         with dt[0]:
             im = torch.from_numpy(im).to(model.device)
             im = im.half() if model.fp16 else im.float()  # uint8 to fp16/32
@@ -133,13 +192,12 @@ def run(
         # Inference
         with dt[1]:
             visualize = increment_path(save_dir / Path(path).stem, mkdir=True) if visualize else False
-            print(im.shape)
             pred = model(im, augment=augment, visualize=visualize)
         
         # NMS
         with dt[2]:
             pred = non_max_suppression(pred, conf_thres, iou_thres, classes, agnostic_nms, max_det=max_det)
-
+        print(pred.shape)
         # Second-stage classifier (optional)
         # pred = utils.general.apply_classifier(pred, classifier_model, im, im0s)
         # Process predictions
