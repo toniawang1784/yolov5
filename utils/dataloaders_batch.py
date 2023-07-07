@@ -241,7 +241,7 @@ class LoadScreenshots:
 
 
 class LoadDicom:
-    def __init__(self,path,img_size=640,stride=32,auto=True, transforms=None,vid_stride=1):
+    def __init__(self,path,bs=1,img_size=640,stride=32,auto=True, transforms=None,vid_stride=1):
         if isinstance(path, str) and Path(path).suffix == ".txt":  # *.txt file with img/vid/dir on each line
             path = Path(path).read_text().rsplit()
         files = []
@@ -259,6 +259,7 @@ class LoadDicom:
         dicoms=[x for x in files if os.path.getsize(os.path.join(path, x))>1000000] # if x.split('.')[-1].lower() in DICOM_FORMATS]
         dicom_sizes=[os.path.getsize(os.path.join(path, x)) for x in dicoms]
         print(len(dicoms), min(dicom_sizes))
+        self.bs=bs
         self.nf=len(dicoms)
         self.img_size = img_size
         self.mode = 'video'
@@ -281,8 +282,7 @@ class LoadDicom:
     def __next__(self):
         if self.count == self.nf:
             raise StopIteration
-        path = self.files[self.count]
-
+        path = self.files[self.count] 
         if self.video_flag[self.count]:
             # Read video
             self.mode = 'video'
@@ -290,7 +290,7 @@ class LoadDicom:
             #     #self.cap.grab()
             # ret_val, im0 = self.cap.retrieve()
             #self._new_sweep(path)
-            self.frames=self.arr2.shape[0]
+            # self.frames=self.arr2.shape[0]
             ret_val= self.grab()
             if ret_val==True:
                 #self.frames=self.arr2.shape[0]
@@ -301,16 +301,16 @@ class LoadDicom:
                 del self.arr
                 #del im
                 #del im0
-                if self.count== self.nf:  # last video
+                if self.count == self.nf:  # last video
                     raise StopIteration
                 path = self.files[self.count]
                 self.frames=self._new_sweep(path)
-                self.frames=self.arr2.shape[0]
+                # self.frames=self.arr2.shape[0]
                 ret_val= self.grab()
                 if ret_val==True:
                     im0=self.image
 
-            self.frame += 1
+            self.frame += self.bs
             # im0 = self._cv2_rotate(im0)  # for use if cv2 autorotation is False
             s = f'video {self.count + 1}/{self.nf} ({self.frame}/{self.frames}) {path}: '
 
@@ -332,15 +332,15 @@ class LoadDicom:
             # im=np.broadcast_to(im,(3,im.shape[0],im.shape[1],im.shape[2]))
             # im=np.transpose(im,(1,0,2,3))
             #im=np.expand_dims(im,axis=0)
-            im=im0[None,:,:,:]
-            im=im[:,:,:,0]
-            im=im[:,:,:,None]
+            # im=im0[None,:,:,:]
+            # im=im[:,:,:,0]
+            # im=im[:,:,:,None]
+            # im=np.broadcast_to(im,(im.shape[0],im.shape[1],im.shape[2],3))
+            im=self.extract_cone(im0)
             im=np.broadcast_to(im,(im.shape[0],im.shape[1],im.shape[2],3))
-            im=self.extract_cone(im)
-            im=np.broadcast_to(im,(im.shape[0],im.shape[1],im.shape[2],3))
-            im = letterbox(im[0], self.img_size, stride=self.stride, auto=self.auto)[0] 
+            im = [letterbox(eachim, self.img_size, stride=self.stride, auto=self.auto)[0] for eachim in im]
             #im = cv2.resize(im[0], (640,640), interpolation=cv2.INTER_LINEAR)
-            im=im[None,:,:,:]
+            im=np.array(im)
             im=np.transpose(im,(0,3,1,2))
             # from skimage.transform import resize
             # im=resize(im,(1,3,640,640),anti_aliasing=False)
@@ -374,10 +374,14 @@ class LoadDicom:
         self.arr2=self.arr     
         self.frames=self.arr.shape[0]
         return self.frames
+
     def grab(self):
         if self.frame<self.frames:
             self.ret_val=True
-            self.image=self.arr2[self.frame]
+            if self.frame+self.bs <= self.frames:
+                self.image=self.arr2[self.frame:self.frame+self.bs]
+            else:
+                self.image=self.arr2[self.frame:]
         else:
             self.ret_val=False
             del self.image
