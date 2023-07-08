@@ -36,7 +36,6 @@ from pathlib import Path
 import numpy as np
 import tensorflow as tf
 import torch
-from torchsummary import summary
 os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 #os.environ['CUDA_VISIBLE_DEVICES']="0,1,2"
 import torch
