@@ -17,8 +17,8 @@ val:  'tmp_imgs' # val images (relative to 'path') 128 images
 test:  'tmp_imgs' # test images (optional)
 
 # Classes
-nc: 8 # number of classes
-names: ['AmnioticFluid', 'Placenta', 'Head', 'Spine', 'Heart', 'Stomach', 'UrinaryBladder', 'UmbilicalVein']
+nc: 10 # number of classes
+names: ['Abdomen','AmnioticFluid', 'Cervix', 'Head', 'Heart', 'MUB', 'Placenta', 'Spine', 'Stomach', 'UrinaryBladder']
 # names: ['AmnioticFluid', 'Placenta', 'Head', 'Spine', 'Heart', 'Stomach', 'UrinaryBladder']
 # names: ['AmnioticFluid', 'Placenta', 'Head']
 # names: ['AmnioticFluid', 'Head-Others', 'Placenta', 'Spine-Others', 'HeartOthers', 'Stomach', 'UrinaryBladder', 
