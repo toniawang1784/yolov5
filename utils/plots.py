@@ -86,7 +86,8 @@ class Annotator:
     def box_label(self, box, label='', color=(128, 128, 128), txt_color=(255, 255, 255)):
         # Add one xyxy box to image with label
         if self.pil or not is_ascii(label):
-            self.draw.rectangle(box, width=self.lw, outline=color)  # box
+            bbox = ((box[0],box[1]),(box[2],box[3]))
+            self.draw.rectangle(bbox, width=self.lw, outline=color)  # box
             if label:
                 w, h = self.font.getsize(label)  # text width, height (WARNING: deprecated) in 9.2.0
                 # _, _, w, h = self.font.getbbox(label)  # text width, height (New)
@@ -154,7 +155,16 @@ class Annotator:
         if anchor == 'bottom':  # start y from font bottom
             w, h = self.font.getsize(text)  # text width, height
             xy[1] += 1 - h
-        self.draw.text(xy, text, fill=txt_color, font=self.font)
+        if self.pil:
+            self.draw.text(xy, text, fill=txt_color, font=self.font)
+        else:
+            cv2.putText(self.im,
+                        text, (0,0),
+                        0,
+                        self.lw / 3,
+                        txt_color,
+                        thickness=3,
+                        lineType=cv2.LINE_AA)
 
     def fromarray(self, im):
         # Update self.im from a numpy array

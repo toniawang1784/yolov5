@@ -34,8 +34,8 @@ import time
 from pathlib import Path
 
 import numpy as np
-import tensorflow as tf
 import torch
+# from torchsummary import summary
 os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 #os.environ['CUDA_VISIBLE_DEVICES']="0,1,2"
 import torch
@@ -47,8 +47,8 @@ if str(ROOT) not in sys.path:
 ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
 
 from models.common import DetectMultiBackend
-# from utils.dataloaders import IMG_FORMATS, VID_FORMATS, LoadImages, LoadScreenshots, LoadStreams, LoadDicom
-from utils.dataloaders_batch import IMG_FORMATS, VID_FORMATS, LoadImages, LoadScreenshots, LoadStreams, LoadDicom
+from utils.dataloaders_HSDP import IMG_FORMATS, VID_FORMATS, LoadImages, LoadScreenshots, LoadStreams, LoadDicom
+# from utils.dataloaders_batchIMAGE import IMG_FORMATS, VID_FORMATS, LoadImages, LoadScreenshots, LoadStreams, LoadDicom
 from utils.general import (LOGGER, Profile, check_file, check_img_size, check_imshow, check_requirements, colorstr, cv2,
                            increment_path, non_max_suppression, print_args, scale_boxes, strip_optimizer, xyxy2xywh)
 from utils.plots import Annotator, colors, save_one_box
@@ -96,7 +96,11 @@ def run(
         source = check_file(source)  # download
 
     # Directories
-    save_dir = increment_path(Path(project) / name, exist_ok=exist_ok)  # increment run
+    save_dir = Path(project) / name
+    # save_dir = Path('/home/ec2-user/SageMaker/'+project) / name  # increment run
+    # print(project, '-----', name)
+    # print('first save_dir: ', save_dir)
+    # print('/home/ec2-user/SageMaker/'+project)
     (save_dir / 'labels' if save_txt else save_dir).mkdir(parents=True, exist_ok=True)  # make dir
 
     # Load model
@@ -104,25 +108,6 @@ def run(
     model = DetectMultiBackend(weights, device=device, dnn=dnn, data=data, fp16=half)
     stride, names, pt = model.stride, model.names, model.pt
     imgsz = check_img_size(imgsz, s=stride)  # check image size
-
-
-    # interpreter = tf.lite.Interpreter(model_path=weights)
-
-    # # Get input and output tensors.
-    # input_details = interpreter.get_input_details()
-    # output_details = interpreter.get_output_details()
-
-    # # Allocate tensors
-    # interpreter.allocate_tensors()
-
-    # # Print the input and output details of the model
-    # print()
-    # print("Input details:")
-    # print(input_details)
-    # print()
-    # print("Output details:")
-    # print(output_details)
-    # print()
 
     # Dataloader
     bs = batchsz
@@ -133,7 +118,7 @@ def run(
     elif screenshot:
         dataset = LoadScreenshots(source, img_size=imgsz, stride=stride, auto=pt)
     else:
-        dataset = LoadDicom(source, bs=batchsz, img_size=imgsz, stride=stride, auto=pt, vid_stride=vid_stride)
+        dataset = LoadDicom(source, img_size=imgsz, stride=stride, auto=pt, vid_stride=vid_stride)
         # dataset = LoadImages(source, batch_size = bs, img_size=imgsz, stride=stride, auto=pt, vid_stride=vid_stride)
     
     vid_path, vid_writer = [None] * bs, [None] * bs
@@ -142,45 +127,7 @@ def run(
     model.warmup(imgsz=(1 if pt or model.triton else bs, 3, *imgsz))  # warmup
     seen, windows, dt = 0, [], (Profile(), Profile(), Profile())
     for path, im, im0s, vid_cap, s in dataset:
-        # np.features = im.transpose((0, 2, 3, 1))
-
-        # input_type = input_details[0]['dtype']
-        # if input_type == np.int8:
-        #     input_scale, input_zero_point = input_details[0]['quantization']
-        #     print("Input scale:", input_scale)
-        #     print("Input zero point:", input_zero_point)
-        #     print()
-        #     np_features = (np_features / input_scale) + input_zero_point
-        #     np_features = np.around(np_features)
-            
-        # # Convert features to NumPy array of expected type
-        # np_features = np_features.astype(input_type)
-
-        # # Add dimension to input sample (TFLite model expects (# samples, data))
-        # np_features = np.expand_dims(np_features, axis=0)
-
-        # # Create input tensor out of raw features
-        # interpreter.set_tensor(input_details[0]['index'], np_features)
-
-        # # Run inference
-        # interpreter.invoke()
-
-        # # output_details[0]['index'] = the index which provides the input
-        # output = interpreter.get_tensor(output_details[0]['index'])
-
-        # # If the output type is int8 (quantized model), rescale data
-        # output_type = output_details[0]['dtype']
-        # if output_type == np.int8:
-        #     output_scale, output_zero_point = output_details[0]['quantization']
-        #     print("Raw output scores:", output)
-        #     print("Output scale:", output_scale)
-        #     print("Output zero point:", output_zero_point)
-        #     print()
-        #     output = output_scale * (output.astype(np.float32) - output_zero_point)
-
-        # # # Print the results of inference
-        # print("Inference output:", output.shape)
-
+        # print(path)
         with dt[0]:
             im = torch.from_numpy(im).to(model.device)
             im = im.half() if model.fp16 else im.float()  # uint8 to fp16/32
@@ -190,18 +137,19 @@ def run(
 
         # Inference
         with dt[1]:
-            visualize = increment_path(save_dir / Path(path).stem, mkdir=True) if visualize else False
+            # visualize = increment_path(save_dir / Path(path).stem, mkdir=True) if visualize else False
+            visualize = Path(save_dir / Path(path).stem) if visualize else False
             pred = model(im, augment=augment, visualize=visualize)
-        
+
         # NMS
         with dt[2]:
             pred = non_max_suppression(pred, conf_thres, iou_thres, classes, agnostic_nms, max_det=max_det)
-        # print(len(pred))
+
         # Second-stage classifier (optional)
         # pred = utils.general.apply_classifier(pred, classifier_model, im, im0s)
         # Process predictions
         for i, det in enumerate(pred):  # per image
-            # seen += 1
+            seen += 1
             if webcam:  # batch_size >= 1
                 p, im0, frame = path[i], im0s[i].copy(), dataset.count
                 s += f'{i}: '
@@ -209,14 +157,13 @@ def run(
                 p, im0, frame = path, im0s.copy(), getattr(dataset, 'frame', 0)
             
             if len(im0.shape)>3:
-                # p = Path(p[i])  # to Path
-                p=Path(p)
-                frame=np.linspace(frame-im0.shape[0], frame, im0.shape[0], endpoint=False, dtype=int)[i]
+                p = Path(p[i])  # to Path
                 im0 = im0[i]
             else:
                 p = Path(p)
             save_path = str(save_dir / p.name)  # im.jpg
-            txt_path = str(save_dir / 'labels') + '/'+ p.name + ('' if dataset.mode == 'image' else f'_{frame}')  # im.txt
+            # print(save_path)
+            txt_path = str(save_dir / 'labels') + '/'+ p.name[:-4] + ('' if dataset.mode == 'image' else f'_{frame}')  # im.txt
 
             # txt_path = str(save_dir / 'labels' /p.parent.absolute().name ) + '_'+ p.name[:-4] + ('' if dataset.mode == 'image' else f'_{frame}')  # im.txt
             s += '%gx%g ' % im.shape[2:]  # print string
@@ -233,6 +180,7 @@ def run(
                     s += f"{n} {names[int(c)]}{'s' * (n > 1)}, "  # add to string
                 # Write results
                 for *xyxy, conf, cls in reversed(det):
+                    # print(project, save_dir)
                     if save_txt:  # Write to file
                         xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
                         line = (cls, *xywh, conf) if save_conf else (cls, *xywh)  # label format
@@ -271,13 +219,11 @@ def run(
                         #     #w = int(vid_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
                         #     #h = int(vid_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
                         # else:  # stream
+                        # print(save_path)
                         fps, w, h = 30, im0.shape[1], im0.shape[0]
-                        try:
-                            suffix = int(save_path.rsplit('.', 1)[-1])
-                            save_path = str(Path(save_path+'.mp4').with_suffix('.mp4'))
-                        except:
-                            save_path = str(Path(save_path).with_suffix('.mp4'))  # force *.mp4 suffix on results videos
-                        vid_writer[i] = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*'MP4V'), fps, (w, h))
+                        save_path = str(Path(save_path+'.dcm').with_suffix('.mp4'))  # force *.mp4 suffix on results videos
+                        # print(save_path)
+                        vid_writer[i] = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
                     vid_writer[i].write(im0)
 
         # Print time (inference-only)
